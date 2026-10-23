@@ -1,3 +1,4 @@
+import json
 import joblib
 import numpy as np
 import pandas as pd
@@ -7,7 +8,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 from literature_recommender.config import (
     DEFAULT_HYBRID_ALPHA,
     DENSE_EMBEDDINGS_FILE,
+    PENDING_ARTICLES_FILE,
     PREPROCESSED_PARQUET,
+    PREPROCESSED_CSV,
     SENTENCE_TRANSFORMER_MODEL,
     TFIDF_MAX_DF,
     TFIDF_MAX_FEATURES,
@@ -69,6 +72,38 @@ class LiteratureRecommender:
         )
         np.save(DENSE_EMBEDDINGS_FILE, self.dense_matrix)
 
+    def record_pending_article(self, article_data: dict, processed: dict) -> None:
+        """
+        Appends unseen article to pending queue if not already queued.
+        """
+        pending_urls = set()
+        if PENDING_ARTICLES_FILE.exists():
+            with open(PENDING_ARTICLES_FILE, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip():
+                        try:
+                            pending_urls.add(json.loads(line)["url"].lower())
+                        except json.JSONDecodeError:
+                            continue
+
+        if article_data["url"].lower() in pending_urls:
+            return
+
+        record = {
+            "title": article_data["title"],
+            "url": article_data["url"],
+            "summary": article_data["summary"],
+            "categories": article_data["categories"],
+            "text_lemmatized": processed["text_lemmatized"],
+            "text_stemmed": processed["text_stemmed"],
+            "token_count": processed["token_count"],
+            "vocab_size": processed["vocab_size"],
+        }
+
+        with open(PENDING_ARTICLES_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            f.flush()
+
     def get_article_vectors(self, link, debug=False):
         """
         Retrieves vectors for a given article link from DB or computes them if the article is new.
@@ -92,6 +127,8 @@ class LiteratureRecommender:
                 [article_data["summary"]],
                 normalize_embeddings=True
             )[0]
+
+            self.record_pending_article(article_data, processed)
 
             return {
                 "title": article_data["title"],
@@ -179,6 +216,69 @@ class LiteratureRecommender:
 
         return top_recommendations[['title', 'url', 'final_score', 'dense_score', 'tfidf_score', 'summary']]
 
+    def get_pending_count(self) -> int:
+        """
+        Returns number of unseen articles awaiting database integration.
+        """
+        if not PENDING_ARTICLES_FILE.exists():
+            return 0
+        with open(PENDING_ARTICLES_FILE, "r", encoding="utf-8") as f:
+            return sum(1 for line in f if line.strip())
 
+    def reindex_database(self) -> int:
+        """
+        Folds all pending articles into the parquet DB, updates TF-IDF,
+        stacks new dense embeddings, and saves weights.
+        """
+        if not PENDING_ARTICLES_FILE.exists():
+            return 0
 
+        pending_records = []
+        with open(PENDING_ARTICLES_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    pending_records.append(json.loads(line))
 
+        if not pending_records:
+            return 0
+
+        new_df = pd.DataFrame(pending_records)
+        new_df = new_df[~new_df["url"].str.lower().isin(self.df["url"].str.lower())]
+
+        if new_df.empty:
+            PENDING_ARTICLES_FILE.unlink(missing_ok=True)
+            return 0
+        
+        def update_df():
+            self.df = pd.concat([self.df, new_df], ignore_index=True)
+            self.df.to_parquet(PREPROCESSED_PARQUET, index=False)
+            csv_df = self.df.copy()
+            csv_df["categories"] = csv_df["categories"].apply(
+                lambda cats: "|".join(cats) if isinstance(cats, list) else str(cats)
+            )
+            csv_df.to_csv(PREPROCESSED_CSV, index=False, encoding="utf-8")
+
+        def update_dense():
+            new_dense_vectors = self.model.encode(
+                new_df["summary"].tolist(),
+                show_progress_bar=False,
+                normalize_embeddings=True,
+            )
+            self.dense_matrix = np.vstack([self.dense_matrix, new_dense_vectors])
+            np.save(DENSE_EMBEDDINGS_FILE, self.dense_matrix)
+
+        def update_tfidf():
+            self.tfidf = TfidfVectorizer(
+                max_features=TFIDF_MAX_FEATURES,
+                min_df=TFIDF_MIN_DF,
+                max_df=TFIDF_MAX_DF,
+            )
+            self.tfidf_matrix = self.tfidf.fit_transform(self.df["text_lemmatized"])
+            joblib.dump(self.tfidf, TFIDF_MODEL_FILE)
+
+        update_df()
+        update_dense()
+        update_tfidf()
+
+        PENDING_ARTICLES_FILE.unlink(missing_ok=True)
+        return len(new_df)

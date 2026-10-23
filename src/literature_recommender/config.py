@@ -7,6 +7,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 SCRAPING_DATA_DIR = DATA_DIR / "scraping"
 RAW_DATA_FILE = SCRAPING_DATA_DIR / "scraped_data.jsonl"
 ADDITIONAL_LINKS_FILE = SCRAPING_DATA_DIR / "additional_links.txt"
+PENDING_ARTICLES_FILE = SCRAPING_DATA_DIR / "pending_articles.jsonl"
 PREPROCESSED_PARQUET = DATA_DIR / "wiki_literature_preprocessed.parquet"
 PREPROCESSED_CSV = DATA_DIR / "wiki_literature_preprocessed.csv"
 
