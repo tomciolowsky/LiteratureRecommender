@@ -1,8 +1,8 @@
 from collections import Counter
 from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import seaborn as sns
 
 from literature_recommender.config import PLOTS_DIR
@@ -40,7 +40,7 @@ class RecommendationVisualizer:
 
     def plot_corpus_statistics(
         self,
-        save_path: Path | str = None,
+        save_path: Path | str | None = None,
         show: bool = True
     ) -> plt.Figure:
         """
@@ -93,7 +93,7 @@ class RecommendationVisualizer:
         query_url: str,
         recommendation_url: str,
         top_n: int = 10,
-        save_path: Path | str = None,
+        save_path: Path | str | None = None,
         show: bool = True
     ) -> plt.Figure:
         """
@@ -150,7 +150,7 @@ class RecommendationVisualizer:
         url: str,
         top_k: int = 5,
         method: str = "hybrid",
-        save_path: Path | str = None,
+        save_path: Path | str | None = None,
         show: bool = True
     ) -> plt.Figure:
         """
@@ -219,7 +219,7 @@ class RecommendationVisualizer:
         self,
         visited_urls: list[str],
         recommended_target_url: str,
-        save_path: Path | str = None,
+        save_path: Path | str | None = None,
         show: bool = True
     ) -> plt.Figure:
         """

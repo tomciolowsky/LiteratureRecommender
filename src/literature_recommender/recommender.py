@@ -1,16 +1,18 @@
 import json
+
 import joblib
 import numpy as np
 import pandas as pd
 from sentence_transformers import SentenceTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+
 from literature_recommender.config import (
     DEFAULT_HYBRID_ALPHA,
     DENSE_EMBEDDINGS_FILE,
     PENDING_ARTICLES_FILE,
-    PREPROCESSED_PARQUET,
     PREPROCESSED_CSV,
+    PREPROCESSED_PARQUET,
     SENTENCE_TRANSFORMER_MODEL,
     TFIDF_MAX_DF,
     TFIDF_MAX_FEATURES,
@@ -18,8 +20,8 @@ from literature_recommender.config import (
     TFIDF_MODEL_FILE,
     WEIGHTS_DIR,
 )
-from literature_recommender.scraper import scrape_article
 from literature_recommender.preprocessor import preprocess_text
+from literature_recommender.scraper import scrape_article
 
 
 def min_max_norm(arr: np.ndarray) -> np.ndarray:
@@ -177,7 +179,7 @@ class LiteratureRecommender:
                 if article_vectors["in_database"]:
                     excluded_indices.append(article_vectors["db_index"])
 
-            except Exception as e:
+            except AttributeError as e:
                 if debug:
                     print(f"Skipping link: {link}. Due to error: {e}")
 

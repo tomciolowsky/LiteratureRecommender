@@ -1,5 +1,6 @@
 from literature_recommender.scraper import scrape_article
 
+
 def test_scraper_basic_functionality():
     test_url = 'https://en.wikipedia.org/wiki/Franz_Kafka'
     print(f'1. Testing scraper on: {test_url}')

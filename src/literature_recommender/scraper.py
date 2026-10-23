@@ -2,8 +2,9 @@ import json
 import random
 import re
 from time import sleep
-from bs4 import BeautifulSoup
+
 import requests
+from bs4 import BeautifulSoup
 from tqdm import tqdm
 
 from literature_recommender.config import (
@@ -60,10 +61,7 @@ def is_valid_book_link(href: str | None) -> bool:
     if any(href.startswith("https://en.wikipedia.org" + p) for p in disallowed_prefixes):
         return False
 
-    if re.search(r"/(1[789]\d\d|20\d\d)(_in_literature)?$", href):
-        return False
-
-    return True
+    return not re.search(r"/(1[789]\d\d|20\d\d)(_in_literature)?$", href)
 
 
 def scrape_article(url: str) -> dict | None:
@@ -118,7 +116,7 @@ def scrape_article(url: str) -> dict | None:
         }
 
         
-    except Exception as e:
+    except AttributeError as e:
         print(f"Error scraping {url}: {e}")
         return None
 
@@ -142,8 +140,8 @@ def extract_book_links_from_author(author_link: str) -> set[str]:
                         for a in data.find_all("a"):
                             if is_valid_book_link(a.get("href")):
                                 works_links.add(a.get("href"))
-    except:
-        pass
+    except AttributeError as e:
+        print(f"Error extracting works from {author_link}: {e}")
     return works_links
     
 
@@ -157,7 +155,7 @@ def extract_links(rows, lists) -> None:
                 for col_index, link_list in lists:
                     link = cols[col_index].find("a").get("href")
                     link_list.append(link) 
-        except:
+        except AttributeError:
             continue
 
 

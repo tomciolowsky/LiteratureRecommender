@@ -1,10 +1,11 @@
 import json
 import re
+
 import nltk
+import pandas as pd
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer, WordNetLemmatizer
 from nltk.tokenize import word_tokenize
-import pandas as pd
 from tqdm import tqdm
 
 from literature_recommender.config import (

@@ -5,9 +5,8 @@ logging.getLogger("streamlit.watcher.local_sources_watcher").setLevel(
 )
 
 import streamlit as st
-import pandas as pd
-from literature_recommender import LiteratureRecommender, RecommendationVisualizer
 
+from literature_recommender import LiteratureRecommender, RecommendationVisualizer
 
 st.set_page_config(
     page_title="Literature Recommender",
@@ -117,7 +116,7 @@ if st.button("Recommend Articles", type="primary"):
                         f"Ingested {new_pending - prev_pending} unseen article(s) into pending queue!"
                     )
                     st.rerun()
-            except Exception as e:
+            except (AttributeError, ValueError) as e:
                 st.error(f"Error generating recommendations: {e}")
 
 if "last_recs" in st.session_state:

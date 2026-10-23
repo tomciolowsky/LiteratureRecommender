@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+
 from literature_recommender.recommender import LiteratureRecommender, min_max_norm
 
 
