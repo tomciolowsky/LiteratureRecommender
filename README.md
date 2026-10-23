@@ -6,6 +6,8 @@
 
 An Information Retrieval and Recommendation System that accepts a collection of Wikipedia links (both cached in the database and unseen) and surfaces related classic books and authors with visual prediction breakdowns.
 
+![App Demo](assets/demo.gif)
+
 ## Highlights
 
 - **Scraping without Topic Drift:** First collecting links from Le Monde's 100 Books of the Century, Nobel Laureates, and Pulitzer Winners. Then extracting 'Notable Works' from authors. Finally scraping all gathered links.
@@ -24,7 +26,11 @@ $$\vec{u}_{\text{dense}} = \frac{1}{K} \sum_{i=1}^K \vec{v}_{a_i}, \quad \hat{u}
 $$\vec{u}_{\text{tfidf}} = \frac{1}{K} \sum_{i=1}^K \vec{w}_{a_i}$$
 
 ### 2. Hybrid Scoring
-Dense similarities ($S_{\text{dense}} = \hat{u}_{\text{dense}} \cdot \hat{v}_d$) and sparse cosine similarities ($S_{\text{tfidf}}$) are Min-Max calibrated before linear combination:
+Dense similarities ($S_{\text{dense}}$) and sparse cosine similarities ($S_{\text{tfidf}}$) are computed against candidate documents $d$:
+
+$$S_{\text{dense}}(d) = \hat{u}_{\text{dense}} \cdot \hat{v}_d, \quad S_{\text{tfidf}}(d) = \frac{\vec{u}_{\text{tfidf}} \cdot \vec{w}_d}{\Vert{}\vec{u}_{\text{tfidf}}\Vert{}_2 \Vert{}\vec{w}_d\Vert{}_2}$$
+
+Scores are Min-Max calibrated across candidate documents before linear combination:
 
 $$\tilde{S}(d) = \frac{S(d) - \min(S)}{\max(S) - \min(S)}$$
 
