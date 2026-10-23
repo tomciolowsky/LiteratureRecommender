@@ -38,7 +38,11 @@ class RecommendationVisualizer:
         self.recommender = recommender
         PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    def plot_corpus_statistics(self, save_path: Path | str = PLOTS_DIR / "corpus_statistics.png") -> None:
+    def plot_corpus_statistics(
+        self,
+        save_path: Path | str = None,
+        show: bool = True
+    ) -> plt.Figure:
         """
         Plots document length, vocabulary size, top words, and pairwise similarity distributions for the corpus.
         """
@@ -78,16 +82,20 @@ class RecommendationVisualizer:
         axes[1, 1].set_ylabel("Pair Count")
 
         plt.tight_layout()
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
-        plt.show()
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        if show:
+            plt.show()
+        return fig
 
     def plot_prediction_breakdown(
         self,
         query_url: str,
         recommendation_url: str,
         top_n: int = 10,
-        save_path: Path | str = PLOTS_DIR / "prediction_breakdown.png"
-    ) -> None:
+        save_path: Path | str = None,
+        show: bool = True
+    ) -> plt.Figure:
         """
         Horizontal bar chart showing word contributions to lexical similarity.
         """
@@ -131,16 +139,20 @@ class RecommendationVisualizer:
             ax.text(v + (max(top_scores) * 0.01), i, f"{v:.4f}", va="center", fontsize=12)
 
         plt.tight_layout()
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
-        plt.show()
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        if show:
+            plt.show()
+        return fig
 
     def plot_score_decomposition(
         self,
         url: str,
         top_k: int = 5,
         method: str = "hybrid",
-        save_path: Path | str = PLOTS_DIR / "score_decomposition.png"
-    ) -> None:
+        save_path: Path | str = None,
+        show: bool = True
+    ) -> plt.Figure:
         """
         Plots a grouped horizontal bar chart comparing Dense vs. TF-IDF vs. Final scores.
         """
@@ -197,15 +209,19 @@ class RecommendationVisualizer:
         ax.grid(axis="x", linestyle="--", alpha=0.5)
 
         plt.tight_layout()
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
-        plt.show()
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        if show:
+            plt.show()
+        return fig
 
     def plot_user_profile_attribution(
         self,
         visited_urls: list[str],
         recommended_target_url: str,
-        save_path: Path | str = PLOTS_DIR / "user_profile_attribution.png"
-    ) -> None:
+        save_path: Path | str = None,
+        show: bool = True
+    ) -> plt.Figure:
         """
         Plots the contribution of each input URL to a specific recommendation.
         """
@@ -251,5 +267,8 @@ class RecommendationVisualizer:
             ax.text(v + 0.01, i, f"{v:.3f}", va="center", fontsize=12)
 
         plt.tight_layout()
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
-        plt.show()
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        if show:
+            plt.show()
+        return fig
