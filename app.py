@@ -1,131 +1,204 @@
 import logging
+import pandas as pd
+import streamlit as st
+import os
+import httpx
+from literature_recommender import LiteratureRecommender, RecommendationVisualizer
+from fastapi import status
 
 logging.getLogger("streamlit.watcher.local_sources_watcher").setLevel(
     logging.ERROR
 )
 
-import streamlit as st
-
-from literature_recommender import LiteratureRecommender, RecommendationVisualizer
-
-st.set_page_config(
-    page_title="Literature Recommender",
-    layout="wide",
-)
+API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 
 @st.cache_resource
-def get_engine():
-    return LiteratureRecommender(load_precomputed=True)
+def get_visualizer():
+    """
+    Get and cache the LiteratureRecommender engine and RecommendationVisualizer.
+    """
+    engine = LiteratureRecommender()
+    return engine, RecommendationVisualizer(engine)
 
 
-engine = get_engine()
-visualizer = RecommendationVisualizer(engine)
+class RecommenderAPIClient:
+    """
+    Client for interacting with the Literature Recommender API.
+    """
+    def __init__(self, base_url: str):
+        self.base_url = base_url.rstrip("/")
+
+    def check_health(self) -> bool:
+        """
+        Check the health of the API.
+        """
+        try:
+            response = httpx.get(f"{self.base_url}/health/info", timeout=3.0)
+            return response.status_code == status.HTTP_200_OK
+        except httpx.RequestError as e:
+            logging.error(f"API health check failed: {e}")
+            return False
+
+    def get_database_status(self) -> dict:
+        """
+        Get the status of the database from the API.
+        """
+        try:
+            response = httpx.get(f"{self.base_url}/database/status", timeout=3.0)
+            if response.status_code == status.HTTP_200_OK:
+                return response.json()
+        
+        except httpx.RequestError as e:
+            logging.error(f"Failed to get database status: {e}")
+            return {"indexed_count": 0, "pending_count": 0}
+
+    def trigger_reindex(self) -> dict:
+        """
+        Trigger a reindexing of the database via the API.
+        """
+        response = httpx.post(f"{self.base_url}/database/reindex", timeout=30.0)
+        response.raise_for_status()
+        return response.json()
+        
+
+    def get_recommendations(self, urls: list[str], top_k: int, method: str, alpha: float) -> list[dict]:
+        """
+        Get recommendations from the API.
+        """
+        payload = {
+            "urls": urls,
+            "top_k": top_k,
+            "method": method,
+            "alpha": alpha,
+        }
+        response = httpx.post(f"{self.base_url}/recommend/", json=payload, timeout=30.0)
+        if response.status_code != status.HTTP_200_OK:
+            error_detail = response.json().get("detail", response.text)
+            raise RuntimeError(f"API Error ({response.status_code}): {error_detail}")
+        return response.json().get("recommendations", [])
 
 
-st.sidebar.title("Engine Controls")
+api_client = RecommenderAPIClient(API_BASE_URL)
 
-method = st.sidebar.selectbox(
-    "Retrieval Method",
-    options=["hybrid", "dense", "tfidf"],
-    index=0,
-    help="Hybrid combines semantic embeddings with exact keyword matches.",
-)
+def init_session_state():
+    """
+    Ensures required session keys exist upon initial load.
+    """
+    if "recs_df" not in st.session_state:
+        st.session_state["recs_df"] = None
+    if "query_urls" not in st.session_state:
+        st.session_state["query_urls"] = []
+    if "query_input" not in st.session_state:
+        st.session_state["query_input"] = ("https://en.wikipedia.org/wiki/Franz_Kafka")
 
-top_k = st.sidebar.slider("Number of Recommendations", min_value=1, max_value=10, value=5)
 
-alpha = 0.70
-if method == "hybrid":
-    alpha = st.sidebar.slider(
-        "Semantic Weight (Alpha)",
-        min_value=0.0,
-        max_value=1.0,
-        value=0.70,
-        step=0.05,
-        help="Higher alpha emphasizes latent literary themes; lower emphasizes exact keyword overlap.",
+def render_sidebar(api_online: bool):
+    """
+    Renders retrieval hyperparameters and database management controls.
+    """
+    st.sidebar.title("Engine Controls")
+
+    if api_online:
+        st.sidebar.success("API Connected (`:8000`)")
+    else:
+        st.sidebar.error("API Offline — start FastAPI server")
+
+    
+    method = st.sidebar.selectbox(
+        "Retrieval Method",
+        options=["hybrid", "dense", "tfidf"],
+        index=0,
+        help="Hybrid combines semantic embeddings with exact keyword matches.",
     )
 
-st.sidebar.divider()
-st.sidebar.subheader("Database Status")
-indexed_count = len(engine.df)
-pending_count = engine.get_pending_count()
+    top_k = st.sidebar.slider(
+        "Number of Recommendations",
+        min_value=1,
+        max_value=10,
+        value=5,
+    )
 
-st.sidebar.metric("Indexed Articles", indexed_count)
-st.sidebar.metric("Pending Unseen Articles", pending_count)
+    alpha = 0.70
+    if method == "hybrid":
+        alpha = st.sidebar.slider(
+            "Semantic Weight (Alpha)",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.70,
+            step=0.05,
+            help="Higher alpha emphasizes latent literary themes; lower emphasizes exact keyword overlap."
+        )
 
-if pending_count > 0:
-    st.sidebar.info(f"{pending_count} article(s) ingested from recent queries.")
-    if st.sidebar.button("Sync & Re-index Database", type="primary"):
-        with st.spinner("Updating database and representations..."):
-            added = engine.reindex_database()
-            st.cache_resource.clear()
-            st.sidebar.success(f"Added {added} new articles to the index!")
+    st.sidebar.divider()
+    st.sidebar.subheader("Database Status")
+
+    db_status = api_client.get_database_status()
+    st.sidebar.metric("Indexed Articles", db_status["indexed_articles"])
+    st.sidebar.metric("Pending Ingestion", db_status["pending_articles"])
+
+    if db_status["pending_articles"] > 0:
+        st.sidebar.info(f"{db_status['pending_articles']} article(s) ingested from recent queries.")
+        if st.sidebar.button("Sync & Re-index Database", type="primary"):
+            with st.spinner("Updating database and representations..."):
+                try:
+                    result = api_client.trigger_reindex()
+                    st.sidebar.success(result.get("message", "Database updated!"))
+                    st.rerun()
+                except Exception as e:
+                    st.sidebar.error(f"Re-indexing failed: {e}")
+
+    return method, top_k, alpha
+
+
+def render_sample_buttons():
+    """
+    Renders the main title and preset sample buttons.
+    """
+    st.title("Classic Literature Recommender")
+    st.caption(
+        "Content-based retrieval system using dual sparse TF-IDF and dense Sentence-Transformer representations.\nPowered by **FastAPI** backend and **Streamlit** frontend."
+    )
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("Sample: Franz Kafka"):
+            st.session_state["query_input"] = (
+                "https://en.wikipedia.org/wiki/Franz_Kafka"
+            )
+            st.rerun()
+    with col2:
+        if st.button("Sample: Sartre & Camus (Existentialism)"):
+            st.session_state["query_input"] = (
+                "https://en.wikipedia.org/wiki/Jean-Paul_Sartre\nhttps://en.wikipedia.org/wiki/Albert_Camus"
+            )
+            st.rerun()
+    with col3:
+        if st.button("Sample: Italo Calvino (Unseen Test)"):
+            st.session_state["query_input"] = (
+                "https://en.wikipedia.org/wiki/Italo_Calvino"
+            )
             st.rerun()
 
 
-st.title("Classic Literature Recommender")
-st.caption(
-    "Content-based retrieval system using dual sparse TF-IDF and dense Sentence-Transformer representations."
-)
+def render_query_input() -> list[str]:
+    """
+    Renders the query URL input area and returns cleaned URLs.
+    """
+    raw_input = st.text_area(
+        "Enter Wikipedia Article URLs (one per line):",
+        value=st.session_state["query_input"],
+        height=110,
+    )
+    return [line.strip() for line in raw_input.strip().split("\n") if line.strip()]
 
-col1, col2, col3 = st.columns(3)
-with col1:
-    if st.button("Sample: Franz Kafka"):
-        st.session_state["query_input"] = "https://en.wikipedia.org/wiki/Franz_Kafka"
-with col2:
-    if st.button("Sample: Sartre & Camus (Existentialism)"):
-        st.session_state["query_input"] = (
-            "https://en.wikipedia.org/wiki/Jean-Paul_Sartre\nhttps://en.wikipedia.org/wiki/Albert_Camus"
-        )
-with col3:
-    if st.button("Sample: Italo Calvino (Unseen Book Test)"):
-        st.session_state["query_input"] = (
-            "https://en.wikipedia.org/wiki/Italo_Calvino\nhttps://en.wikipedia.org/wiki/Invisible_Cities"
-        )
 
-default_text = st.session_state.get(
-    "query_input", "https://en.wikipedia.org/wiki/Franz_Kafka"
-)
-raw_input = st.text_area(
-    "Enter Wikipedia Article URLs (one per line):",
-    value=default_text,
-    height=110,
-)
+def render_results(recs_df: pd.DataFrame):
+    """
+    Displays the retrieved recommendations as formatted cards.
+    """
+    st.subheader(f"Top {len(recs_df)} Recommendations")
 
-urls = [line.strip() for line in raw_input.strip().split("\n") if line.strip()]
-
-if st.button("Recommend Articles", type="primary"):
-    if not urls:
-        st.warning("Please provide at least one valid Wikipedia URL.")
-    else:
-        with st.spinner("Scraping unseen links and computing user profile..."):
-            try:
-                prev_pending = engine.get_pending_count()
-
-                recs_df = engine.recommend_articles(
-                    visited_links=urls,
-                    top_k=top_k,
-                    method=method,
-                    alpha=alpha,
-                )
-                st.session_state["last_recs"] = recs_df
-                st.session_state["last_urls"] = urls
-
-                new_pending = engine.get_pending_count()
-                if new_pending > prev_pending:
-                    st.toast(
-                        f"Ingested {new_pending - prev_pending} unseen article(s) into pending queue!"
-                    )
-                    st.rerun()
-            except (AttributeError, ValueError) as e:
-                st.error(f"Error generating recommendations: {e}")
-
-if "last_recs" in st.session_state:
-    recs = st.session_state["last_recs"]
-    query_urls = st.session_state["last_urls"]
-
-    st.subheader(f"Top {len(recs)} Recommendations")
-
-    for idx, row in recs.reset_index(drop=True).iterrows():
+    for idx, row in recs_df.reset_index(drop=True).iterrows():
         with st.container(border=True):
             col_info, col_scores = st.columns([3, 1])
             with col_info:
@@ -137,6 +210,16 @@ if "last_recs" in st.session_state:
                     f"**Dense Semantic:** {row['dense_score']:.4f}\n\n**TF-IDF Lexical:** {row['tfidf_score']:.4f}"
                 )
 
+
+def render_visualizations(
+    query_urls: list[str],
+    recs_df: pd.DataFrame,
+    method: str,
+    visualizer: RecommendationVisualizer,
+):
+    """
+    Renders diagnostic attribution plots in dedicated tabs.
+    """
     st.divider()
     st.subheader("Visual Explanations & Diagnostics")
 
@@ -149,13 +232,11 @@ if "last_recs" in st.session_state:
     )
 
     with tab1:
-        st.markdown(
-            "#### Word-Level Attribution ($TFIDF_q \\times TFIDF_r$)"
-        )
+        st.markdown("#### Word-Level Attribution ($TFIDF_q \\times TFIDF_r$)")
         rec_choice = st.selectbox(
             "Select recommended book to inspect:",
-            options=recs["url"].tolist(),
-            format_func=lambda u: recs.loc[recs["url"] == u, "title"].values[0],
+            options=recs_df["url"].tolist(),
+            format_func=lambda u: recs_df.loc[recs_df["url"] == u, "title"].values[0],
         )
         if query_urls:
             fig_breakdown = visualizer.plot_prediction_breakdown(
@@ -168,28 +249,78 @@ if "last_recs" in st.session_state:
     with tab2:
         st.markdown("#### Dense vs. TF-IDF vs. Final Scores")
         if query_urls:
-            fig_decomp = visualizer.plot_score_decomposition(
+            fig_decomposition = visualizer.plot_score_decomposition(
                 url=query_urls[0],
-                top_k=len(recs),
+                top_k=len(recs_df),
                 method=method,
                 show=False,
             )
-            st.pyplot(fig_decomp)
+            st.pyplot(fig_decomposition)
 
     with tab3:
         st.markdown("#### Profile Component Influence")
         if len(query_urls) > 1:
             target_choice = st.selectbox(
                 "Select target to attribute:",
-                options=recs["url"].tolist(),
-                format_func=lambda u: recs.loc[recs["url"] == u, "title"].values[0],
-                key="attr_target",
+                options=recs_df["url"].tolist(),
+                format_func=lambda u: recs_df.loc[recs_df["url"] == u, "title"].values[0],
+                key="tab3_target",
             )
-            fig_attr = visualizer.plot_user_profile_attribution(
+            fig_attribution = visualizer.plot_user_profile_attribution(
                 visited_urls=query_urls,
                 recommended_target_url=target_choice,
                 show=False,
             )
-            st.pyplot(fig_attr)
+            st.pyplot(fig_attribution)
         else:
             st.info("Input at least two URLs to evaluate multi-article influence.")
+
+
+def main():
+    """
+    Main function to run the Streamlit app, handling user input, API calls, and rendering results.
+    """
+    st.set_page_config(
+        page_title="Literature Recommender",
+        layout="wide"
+    )
+
+    init_session_state()
+    api_online = api_client.check_health()
+    _, visualizer = get_visualizer()
+
+    method, top_k, alpha = render_sidebar(api_online)
+    render_sample_buttons()
+    urls = render_query_input()
+
+    if st.button("Recommend Articles", type="primary", disabled=(not api_online)):
+        if not urls:
+            st.warning("Please provide at least one valid Wikipedia URL.")
+            return
+
+        with st.spinner("Calling FastAPI service to compute profile & retrieve matches..."):
+            try:
+                raw_recs = api_client.get_recommendations(
+                    urls=urls,
+                    top_k=top_k,
+                    method=method,
+                    alpha=alpha,
+                )
+                st.session_state["recs_df"] = pd.DataFrame(raw_recs)
+                st.session_state["query_urls"] = urls
+                st.rerun()
+            except Exception as e:
+                st.error(f"Recommendation request failed: {e}")
+
+    if (st.session_state["recs_df"] is not None) and (not st.session_state["recs_df"].empty):
+        render_results(st.session_state["recs_df"])
+        render_visualizations(
+            query_urls=st.session_state["query_urls"],
+            recs_df=st.session_state["recs_df"],
+            method=method,
+            visualizer=visualizer,
+        )
+
+
+if __name__ == "__main__":
+    main()
