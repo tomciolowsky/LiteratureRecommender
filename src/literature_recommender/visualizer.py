@@ -100,8 +100,8 @@ class RecommendationVisualizer:
         Horizontal bar chart showing word contributions to lexical similarity.
         """
         
-        query_vec_dict = self.recommender.get_article_vectors(query_url)
-        rec_vec_dict = self.recommender.get_article_vectors(recommendation_url)
+        query_vec_dict = self.recommender.get_article_vectors(query_url, record_pending=False)
+        rec_vec_dict = self.recommender.get_article_vectors(recommendation_url, record_pending=False)
 
         vec_q = query_vec_dict["tfidf_vector"]
         vec_r = rec_vec_dict["tfidf_vector"]
@@ -156,7 +156,7 @@ class RecommendationVisualizer:
         """
         Plots a grouped horizontal bar chart comparing Dense vs. TF-IDF vs. Final scores.
         """
-        query_vec_dict = self.recommender.get_article_vectors(url)
+        query_vec_dict = self.recommender.get_article_vectors(url, record_pending=False)
         query_title = query_vec_dict["title"]
         recommendations_df = self.recommender.recommend_articles([url], top_k=top_k, method=method)
 
@@ -225,7 +225,7 @@ class RecommendationVisualizer:
         """
         Plots the contribution of each input URL to a specific recommendation.
         """
-        target_vec_dict = self.recommender.get_article_vectors(recommended_target_url)
+        target_vec_dict = self.recommender.get_article_vectors(recommended_target_url, record_pending=False)
         target_dense = target_vec_dict["dense_vector"]
         target_title = target_vec_dict["title"]
 
@@ -233,7 +233,7 @@ class RecommendationVisualizer:
         similarities = []
 
         for url in visited_urls:
-            source_vec_dict = self.recommender.get_article_vectors(url)
+            source_vec_dict = self.recommender.get_article_vectors(url, record_pending=False)
             source_dense = source_vec_dict["dense_vector"]
             sim = float(np.dot(source_dense, target_dense))
             source_titles.append(source_vec_dict["title"])

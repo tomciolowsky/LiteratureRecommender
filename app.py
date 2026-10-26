@@ -142,6 +142,7 @@ def render_sidebar(api_online: bool):
             with st.spinner("Updating database and representations..."):
                 try:
                     result = api_client.trigger_reindex()
+                    st.cache_resource.clear()
                     st.sidebar.success(result.get("message", "Database updated!"))
                     st.rerun()
                 except Exception as e:

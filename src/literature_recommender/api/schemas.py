@@ -7,7 +7,7 @@ class RecommendationRequest(BaseModel):
     urls: list[HttpUrl] = Field(...,
                                 min_length=1, 
                                 description="List of Wikipedia URLs used to generate recommendations.",
-                                example=["https://en.wikipedia.org/wiki/Franz_Kafka"]
+                                json_schema_extra={"example": ["https://en.wikipedia.org/wiki/Franz_Kafka"]}
     )
     top_k: int = Field(default=5, 
                        ge=1, 

@@ -106,7 +106,7 @@ class LiteratureRecommender:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
             f.flush()
 
-    def get_article_vectors(self, link, debug=False):
+    def get_article_vectors(self, link: str, debug: bool=False, record_pending: bool=True):
         """
         Retrieves vectors for a given article link from DB or computes them if the article is new.
         """
@@ -130,7 +130,8 @@ class LiteratureRecommender:
                 normalize_embeddings=True
             )[0]
 
-            self.record_pending_article(article_data, processed)
+            if record_pending:
+                self.record_pending_article(article_data, processed)
 
             return {
                 "title": article_data["title"],
@@ -172,7 +173,7 @@ class LiteratureRecommender:
 
         for link in visited_links:
             try:
-                article_vectors = self.get_article_vectors(link, debug=debug)
+                article_vectors = self.get_article_vectors(link, debug=debug, record_pending=True)
                 dense_vectors.append(article_vectors["dense_vector"])
                 tfidf_vectors.append(article_vectors["tfidf_vector"])
 
@@ -196,23 +197,25 @@ class LiteratureRecommender:
         dense_similarities = np.dot(self.dense_matrix, user_dense_profile)
         tfidf_similarities = cosine_similarity(self.tfidf_matrix, user_tfidf_profile).flatten()
 
-        match method:
-            case 'dense':
-                final_similarities = dense_similarities
-            case 'tfidf':
-                final_similarities = tfidf_similarities
-            case 'hybrid':
-                final_similarities = (alpha * min_max_norm(dense_similarities)) + ((1-alpha) * min_max_norm(tfidf_similarities))
-            case _:
-                raise ValueError(f"Invalid method: {method}. Choose 'dense', 'tfidf', 'hybrid'.")
-
         results_df = self.df.copy()
-        results_df['final_score'] = final_similarities
         results_df['dense_score'] = dense_similarities
         results_df['tfidf_score'] = tfidf_similarities
 
         if excluded_indices:
             results_df = results_df.drop(index=excluded_indices)
+
+        cand_dense = results_df["dense_score"].to_numpy()
+        cand_tfidf = results_df["tfidf_score"].to_numpy()
+
+        match method:
+            case 'dense':
+                results_df['final_score'] = cand_dense
+            case 'tfidf':
+                results_df['final_score'] = cand_tfidf
+            case 'hybrid':
+                results_df['final_score'] = (alpha * min_max_norm(cand_dense)) + ((1-alpha) * min_max_norm(cand_tfidf))
+            case _:
+                raise ValueError(f"Invalid method: {method}. Choose 'dense', 'tfidf', 'hybrid'.")
 
         top_recommendations = results_df.nlargest(top_k, 'final_score')
 
@@ -226,6 +229,18 @@ class LiteratureRecommender:
             return 0
         with open(PENDING_ARTICLES_FILE, "r", encoding="utf-8") as f:
             return sum(1 for line in f if line.strip())
+
+    def _clear_pending_file(self) -> None:
+        """
+        Safely truncates and deletes pending queue on Windows without file-lock errors.
+        """
+        if PENDING_ARTICLES_FILE.exists():
+            try:
+                with open(PENDING_ARTICLES_FILE, "w", encoding="utf-8") as f:
+                    pass
+                PENDING_ARTICLES_FILE.unlink(missing_ok=True)
+            except Exception:
+                pass
 
     def reindex_database(self) -> int:
         """
@@ -256,7 +271,7 @@ class LiteratureRecommender:
             self.df.to_parquet(PREPROCESSED_PARQUET, index=False)
             csv_df = self.df.copy()
             csv_df["categories"] = csv_df["categories"].apply(
-                lambda cats: "|".join(cats) if isinstance(cats, list) else str(cats)
+                lambda cats: "|".join(cats)
             )
             csv_df.to_csv(PREPROCESSED_CSV, index=False, encoding="utf-8")
 
@@ -282,5 +297,5 @@ class LiteratureRecommender:
         update_dense()
         update_tfidf()
 
-        PENDING_ARTICLES_FILE.unlink(missing_ok=True)
+        self._clear_pending_file()
         return len(new_df)
