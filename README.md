@@ -2,6 +2,9 @@
 
 ![CI Pipeline](https://github.com/tomciolowsky/LiteratureRecommender/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/Python-3.14-blue.svg?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.162-teal.svg?logo=fastapi)
+![Streamlit](https://img.shields.io/badge/Streamlit-1.66-FF4B4B.svg?logo=streamlit&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg?logo=docker)
 ![uv](https://img.shields.io/badge/uv-managed-DE5FE9.svg?logo=uv)
 
 An Information Retrieval and Recommendation System that accepts a collection of Wikipedia links (both cached in the database and unseen) and surfaces related classic books and authors with visual prediction breakdowns.
@@ -15,6 +18,7 @@ An Information Retrieval and Recommendation System that accepts a collection of 
 - **Dynamic Inference for Unseen URLs:** Paste **any** Wikipedia article link; the engine scrapes, tokenizes, and projects it into the precomputed vector space on the fly.
 - **Visual Interpretability:** Word-level contribution attribution charts, score decomposition bars, and multi-source profile influence plots.
 - **Self-Expanding Database:** Newly scraped unseen articles can be merged and re-indexed into the Parquet corpus at the click of a button.
+- **Decoupled Architecture:** Modular FastAPI backend serving validated Pydantic schemas, consumed by an interactive Streamlit frontend and command-line interface (CLI).
 
 ## Mathematical Formulation
 
@@ -25,22 +29,37 @@ $$\vec{u}_{\text{dense}} = \frac{1}{K} \sum_{i=1}^K \vec{v}_{a_i}, \quad \hat{u}
 
 $$\vec{u}_{\text{tfidf}} = \frac{1}{K} \sum_{i=1}^K \vec{w}_{a_i}$$
 
-### 2. Hybrid Scoring
-Dense similarities ($S_{\text{dense}}$) and sparse cosine similarities ($S_{\text{tfidf}}$) are computed against candidate documents $d$:
+### 2. Candidate Filtering & Similarity Calculation
+Similarities are calculated across the corpus $\mathcal{D}$, and query articles are filtered out to form candidate set $\mathcal{D}_{\text{cand}} = \mathcal{D} \setminus \mathcal{A}_{\text{visited}}$:
 
-$$S_{\text{dense}}(d) = \hat{u}_{\text{dense}} \cdot \hat{v}_d, \quad S_{\text{tfidf}}(d) = \frac{\vec{u}_{\text{tfidf}} \cdot \vec{w}_d}{\Vert{}\vec{u}_{\text{tfidf}}\Vert{}_2 \Vert{}\vec{w}_d\Vert{}_2}$$
+$$S_{\text{dense}}(d) = \hat{u}_{\text{dense}} \cdot \hat{v}_d, \quad S_{\text{tfidf}}(d) = \frac{\vec{u}_{\text{tfidf}} \cdot \vec{w}_d}{\Vert{}\vec{u}_{\text{tfidf}}\Vert{}_2 \Vert{}\vec{w}_d\Vert{}_2}, \quad \forall d \in \mathcal{D}_{\text{cand}}$$
 
-Scores are Min-Max calibrated across candidate documents before linear combination:
+### 3. Hybrid Scoring
+Depending on the selected retrieval strategy:
+- **`dense`**: $S_{\text{final}}(d) = S_{\text{dense}}(d)$
+- **`tfidf`**: $S_{\text{final}}(d) = S_{\text{tfidf}}(d)$
+- **`hybrid`**: Candidate scores are Min-Max scaled over $\mathcal{D}_{\text{cand}}$ before linear combination ($\alpha = 0.70$):
 
-$$\tilde{S}(d) = \frac{S(d) - \min(S)}{\max(S) - \min(S)}$$
+$$\tilde{S}(d) = \frac{S(d) - \min_{k \in \mathcal{D}_{\text{cand}}} S(k)}{\max_{k \in \mathcal{D}_{\text{cand}}} S(k) - \min_{k \in \mathcal{D}_{\text{cand}}} S(k)}$$
 
-$$S_{\text{final}}(d) = \alpha \cdot \tilde{S}_{\text{dense}}(d) + (1 - \alpha) \cdot \tilde{S}_{\text{tfidf}}(d) \quad (\alpha = 0.70)$$
+$$S_{\text{final}}(d) = \alpha \cdot \tilde{S}_{\text{dense}}(d) + (1 - \alpha) \cdot \tilde{S}_{\text{tfidf}}(d)$$
 
-### 3. Word Attribution Breakdown
+### 4. Word Attribution Breakdown
 $$\text{Contribution}(w) = \vec{w}_{\text{query}}[w] \times \vec{w}_{\text{rec}}[w]$$
 
+## Quickstart with Docker
 
-## Installation
+Run both the FastAPI backend and Streamlit frontend using Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+Streamlit Web Application: [http://localhost:8501](http://localhost:8501)
+
+FastAPI Interactive Docs (Swagger): [http://localhost:8000/docs](http://localhost:8000/docs)
+
+## Local Installation
 
 ### Using uv:
 
@@ -70,7 +89,19 @@ cd LiteratureRecommender
 pip install -e .[dev]
 ```
 
-## Interactive Web Application (Streamlit)
+## Running the Application Locally
+
+1. Start the FastAPI Server
+
+```bash
+uv run uvicorn literature_recommender.api.main:app --reload --port 8000
+```
+
+Interactive API documentation will be available at [http://localhost:8000/docs](http://localhost:8000/docs).
+
+2. Start the Streamlit Frontend
+
+In a separate terminal window:
 
 ```bash
 uv run streamlit run app.py
@@ -80,7 +111,7 @@ Open [http://localhost:8501](http://localhost:8501) to explore recommendations, 
 
 ## Command Line Interface (CLI)
 
-Examples of how to use:
+You can also generate recommendations directly from your terminal:
 
 ```bash
 # Single article recommendation
@@ -105,6 +136,16 @@ options:
   -v, --verbose                     Display additional information
 ```
 
+## REST API Overview
+
+| Method | Endpoint            | Description                                                     |
+| :---:  | :---                | :---                                                            |
+| `GET`  | `/health/info`      | Service status and health monitoring                            |
+| `GET`  | `/database/status`  | Current indexed and pending unseen article counts               |
+| `POST` | `/database/reindex` | Trigger automated corpus re-indexing and representation updates |
+| `POST` | `/recommend/`       | Generate recommendations for input Wikipedia URLs               |
+
+
 ## Testing and Code linting
 
 Use `pytest` for unit testing:
@@ -125,19 +166,28 @@ uv run ruff check .
 ```text
 LiteratureRecommender/
 ├── .github/workflows/ci.yml       # Automated GitHub Actions test pipeline
-├── data/                          # Processed Parquet & CSV databases
+├── assets/                        # Readme visual assets & demo gif
+├── data/                          # Parquet & CSV corpus databases
 ├── notebooks/                     # Step-by-step development & report.ipynb
 ├── plots/                         # Static report figures
 ├── src/literature_recommender/    # Core package
+│   ├── api/                       # REST API transport layer
+│   │   ├── routes/                # Modular routers (database, health, recommender)
+│   │   ├── dependencies.py        # Dependency injection & engine state providers
+│   │   ├── main.py                # FastAPI app initialization & lifespan context
+│   │   └── schemas.py             # Pydantic request/response models
+│   ├── cli.py                     # Command-line entrypoint
 │   ├── config.py                  # Paths and hyperparameter settings
-│   ├── scraper.py                 # Wikipedia parsing & cleaning
 │   ├── preprocessor.py            # Lemmatization & token filtering
 │   ├── recommender.py             # Hybrid engine & database re-indexer
-│   ├── visualizer.py              # Matplotlib visual breakdowns
-│   └── cli.py                     # Command-line entrypoint
+│   ├── scraper.py                 # Wikipedia parsing & cleaning
+│   └── visualizer.py              # Matplotlib visual breakdowns
 ├── tests/                         # Unit test suite
 ├── weights/                       # Serialized TF-IDF and dense embeddings
+├── .dockerignore                  # Docker build context exclusions
 ├── app.py                         # Streamlit dashboard
+├── docker-compose.yml             # Multi-service container orchestration
+├── Dockerfile                     # Optimized container definition
 ├── pyproject.toml                 # Package specs & dependencies
 └── uv.lock                        # Deterministic dependency lockfile
 ```
