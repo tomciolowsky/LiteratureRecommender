@@ -1,4 +1,5 @@
 import json
+import logging
 import random
 import re
 from time import sleep
@@ -17,6 +18,7 @@ from literature_recommender.config import (
     TARGET_ARTICLE_COUNT,
 )
 
+logger = logging.getLogger(__name__)
 
 def clean_content(content: BeautifulSoup) -> None:
     """
@@ -114,10 +116,9 @@ def scrape_article(url: str) -> dict | None:
             "num_characters": len(full_text),
             "num_paragraphs": len(paragraphs),
         }
-
-        
-    except AttributeError as e:
-        print(f"Error scraping {url}: {e}")
+   
+    except requests.RequestException as e:
+        logger.warning("Error scraping '%s': %s", url, e)
         return None
 
 
@@ -125,6 +126,7 @@ def extract_book_links_from_author(author_link: str) -> set[str]:
     works_links = set()
     try:
         response = requests.get(author_link, headers=HEADERS)
+        response.raise_for_status()
         parsed = BeautifulSoup(response.text, "html.parser")
 
         infobox = parsed.find("table", class_="infobox")
@@ -140,8 +142,10 @@ def extract_book_links_from_author(author_link: str) -> set[str]:
                         for a in data.find_all("a"):
                             if is_valid_book_link(a.get("href")):
                                 works_links.add(a.get("href"))
-    except AttributeError as e:
-        print(f"Error extracting works from {author_link}: {e}")
+    except requests.RequestException as e:
+        logger.warning("Error extracting works from %s: %s", author_link, e)
+    except Exception:
+        logger.exception("Failed to extract works from %s", author_link)
     return works_links
     
 

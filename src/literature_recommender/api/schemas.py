@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field, HttpUrl
 
+
 class RecommendationRequest(BaseModel):
     """
     Schema for the request for article recommendations.

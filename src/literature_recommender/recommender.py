@@ -1,4 +1,6 @@
+import contextlib
 import json
+import logging
 
 import joblib
 import numpy as np
@@ -23,6 +25,7 @@ from literature_recommender.config import (
 from literature_recommender.preprocessor import preprocess_text
 from literature_recommender.scraper import scrape_article
 
+logger = logging.getLogger(__name__)
 
 def min_max_norm(arr: np.ndarray) -> np.ndarray:
     """
@@ -180,9 +183,10 @@ class LiteratureRecommender:
                 if article_vectors["in_database"]:
                     excluded_indices.append(article_vectors["db_index"])
 
-            except AttributeError as e:
-                if debug:
-                    print(f"Skipping link: {link}. Due to error: {e}")
+            except (ValueError, KeyError, ConnectionError) as e:
+                logger.warning("Skipping link '%s' due to error: %s", link, e)
+            except Exception:
+                logger.exception("Unexpected error processing link '%s'", link)
 
         if not dense_vectors or not tfidf_vectors:
             raise ValueError("None of the links could be successfully processed.")
@@ -235,12 +239,10 @@ class LiteratureRecommender:
         Safely truncates and deletes pending queue on Windows without file-lock errors.
         """
         if PENDING_ARTICLES_FILE.exists():
-            try:
-                with open(PENDING_ARTICLES_FILE, "w", encoding="utf-8") as f:
+            with contextlib.suppress(OSError):
+                with open(PENDING_ARTICLES_FILE, "w", encoding="utf-8"):
                     pass
                 PENDING_ARTICLES_FILE.unlink(missing_ok=True)
-            except Exception:
-                pass
 
     def reindex_database(self) -> int:
         """

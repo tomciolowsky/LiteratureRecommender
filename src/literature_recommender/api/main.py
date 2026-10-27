@@ -1,9 +1,14 @@
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from literature_recommender.api.routes import (
+    database_router,
+    health_router,
+    recommender_router,
+)
 from literature_recommender.recommender import LiteratureRecommender
-from literature_recommender.api.routes import database_router, health_router, recommender_router
 
 
 @asynccontextmanager

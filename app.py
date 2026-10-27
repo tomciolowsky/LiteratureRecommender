@@ -1,14 +1,18 @@
 import logging
+import os
+
+import httpx
 import pandas as pd
 import streamlit as st
-import os
-import httpx
-from literature_recommender import LiteratureRecommender, RecommendationVisualizer
 from fastapi import status
+
+from literature_recommender import LiteratureRecommender, RecommendationVisualizer
 
 logging.getLogger("streamlit.watcher.local_sources_watcher").setLevel(
     logging.ERROR
 )
+
+logger = logging.getLogger(__name__)
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 
@@ -35,8 +39,8 @@ class RecommenderAPIClient:
         try:
             response = httpx.get(f"{self.base_url}/health/info", timeout=3.0)
             return response.status_code == status.HTTP_200_OK
-        except httpx.RequestError as e:
-            logging.error(f"API health check failed: {e}")
+        except httpx.HTTPError as e:
+            logger.error("API health check failed: %s", e)
             return False
 
     def get_database_status(self) -> dict:
@@ -48,8 +52,8 @@ class RecommenderAPIClient:
             if response.status_code == status.HTTP_200_OK:
                 return response.json()
         
-        except httpx.RequestError as e:
-            logging.error(f"Failed to get database status: {e}")
+        except httpx.HTTPError as e:
+            logger.error("Failed to get database status: %s", e)
             return {"indexed_count": 0, "pending_count": 0}
 
     def trigger_reindex(self) -> dict:
@@ -145,7 +149,7 @@ def render_sidebar(api_online: bool):
                     st.cache_resource.clear()
                     st.sidebar.success(result.get("message", "Database updated!"))
                     st.rerun()
-                except Exception as e:
+                except httpx.HTTPError as e:
                     st.sidebar.error(f"Re-indexing failed: {e}")
 
     return method, top_k, alpha
@@ -310,7 +314,7 @@ def main():
                 st.session_state["recs_df"] = pd.DataFrame(raw_recs)
                 st.session_state["query_urls"] = urls
                 st.rerun()
-            except Exception as e:
+            except RuntimeError as e:
                 st.error(f"Recommendation request failed: {e}")
 
     if (st.session_state["recs_df"] is not None) and (not st.session_state["recs_df"].empty):

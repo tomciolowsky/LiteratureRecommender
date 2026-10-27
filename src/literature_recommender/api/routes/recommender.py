@@ -1,8 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from literature_recommender.api.schemas import RecommendationRequest, RecommendationResponse
-from literature_recommender.api.dependencies import get_engine
-from literature_recommender.recommender import LiteratureRecommender
+from typing import Annotated
 
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from literature_recommender.api.dependencies import get_engine
+from literature_recommender.api.schemas import (
+    RecommendationRequest,
+    RecommendationResponse,
+)
+from literature_recommender.recommender import LiteratureRecommender
 
 router = APIRouter(
     prefix="/recommend",
@@ -15,7 +20,7 @@ router = APIRouter(
              description="Recommend literature articles based on visited Wikipedia URLs.")
 def recommend_articles(
     payload: RecommendationRequest, 
-    engine: LiteratureRecommender = Depends(get_engine)
+    engine: Annotated[LiteratureRecommender, Depends(get_engine)]
 ):
     """
     Endpoint to recommend literature articles based on visited Wikipedia URLs.
@@ -35,7 +40,7 @@ def recommend_articles(
             count=len(recs_dict),
             recommendations=recs_dict,
         )
-    except Exception as e:
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
         )

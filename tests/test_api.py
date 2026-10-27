@@ -1,8 +1,9 @@
 import pytest
-from fastapi.testclient import TestClient
 from fastapi import status
+from fastapi.testclient import TestClient
 
 from literature_recommender.api.main import app
+
 
 @pytest.fixture(scope="module")
 def client():

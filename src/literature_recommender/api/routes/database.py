@@ -1,4 +1,7 @@
-from fastapi import APIRouter, status, Depends
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, status
+
 from literature_recommender.api.dependencies import get_engine
 from literature_recommender.api.schemas import DatabaseStatusResponse, ReindexResponse
 from literature_recommender.recommender import LiteratureRecommender
@@ -14,7 +17,7 @@ router = APIRouter(
     status_code=status.HTTP_200_OK,
     description="Get the current status of the database, including the number of indexed articles and pending articles.",
 )
-def get_database_status(engine: LiteratureRecommender = Depends(get_engine)):
+def get_database_status(engine: Annotated[LiteratureRecommender, Depends(get_engine)]):
     """
     Endpoint to retrieve the current status of the database, including the number of indexed articles and pending articles.
     """
@@ -30,7 +33,7 @@ def get_database_status(engine: LiteratureRecommender = Depends(get_engine)):
     status_code=status.HTTP_200_OK,
     description="Trigger a re-indexing of the database.",
 )
-def trigger_reindex(engine: LiteratureRecommender = Depends(get_engine)):
+def trigger_reindex(engine: Annotated[LiteratureRecommender, Depends(get_engine)]):
     """
     Endpoint to trigger a re-indexing of the database.
     """
