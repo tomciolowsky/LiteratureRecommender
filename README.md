@@ -30,7 +30,9 @@ $$\vec{u}_{\text{dense}} = \frac{1}{K} \sum_{i=1}^K \vec{v}_{a_i}, \quad \hat{u}
 $$\vec{u}_{\text{tfidf}} = \frac{1}{K} \sum_{i=1}^K \vec{w}_{a_i}$$
 
 ### 2. Candidate Filtering & Similarity Calculation
-Similarities are calculated across the corpus $\mathcal{D}$, and query articles are filtered out to form candidate set $\mathcal{D}_{\text{cand}} = \mathcal{D} \setminus \mathcal{A}_{\text{visited}}$:
+Similarities are calculated across the corpus $\mathcal{D}$, and query articles are filtered out to form candidate set:
+
+$$\mathcal{D}_{\text{cand}} = \mathcal{D} \setminus \mathcal{A}_{\text{visited}}$$
 
 $$S_{\text{dense}}(d) = \hat{u}_{\text{dense}} \cdot \hat{v}_d, \quad S_{\text{tfidf}}(d) = \frac{\vec{u}_{\text{tfidf}} \cdot \vec{w}_d}{\Vert{}\vec{u}_{\text{tfidf}}\Vert{}_2 \Vert{}\vec{w}_d\Vert{}_2}, \quad \forall d \in \mathcal{D}_{\text{cand}}$$
 
